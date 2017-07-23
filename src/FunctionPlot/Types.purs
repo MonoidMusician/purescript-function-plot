@@ -19,6 +19,9 @@ import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data Plot :: Type
 
+unsafeFillIn :: forall p f. FillIn p f => p -> f
+unsafeFillIn = fillIn (unsafeCoerce {})
+
 class FillIn
   (partial :: Type) -- Record
   (filledIn :: Type) -- Record
@@ -178,7 +181,7 @@ sineNomine =
 
 maybeTitle :: Maybe String -> ReallyMaxOptions
 maybeTitle title =
-  fillIn defaultOptions { title }
+  unsafeFillIn { title }
 
 data AxisType = LinearAxis | LogAxis
 
