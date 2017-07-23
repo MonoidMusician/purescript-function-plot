@@ -40,6 +40,7 @@ class FillInImpl
   (defaults :: # Type)
   (result :: # Type)
   | iter defaults -> partial result
+  , iter -> partial
   where
     fillInImpl ::
       --forall partial.
@@ -50,7 +51,7 @@ instance fillInNil ::
   FillInImpl R.Nil () remaining remaining where
     fillInImpl _ _{-{}-} dfs = dfs
 
-instance fillInConsExists ::
+instance fillInConsZExists ::
     -- ensure it exists in the result
   ( RowCons sym t defaults' defaults
     -- recurse through the remaining keys, subtracting from defaults
@@ -77,7 +78,6 @@ instance fillInConsExists ::
         recurse :: Record result'
         recurse = fillInImpl' subpart $ Rec.delete key dfs
 
-{-
 instance fillInConsMaybe ::
     -- ensure it exists in the result
   ( RowCons sym t defaults' defaults
@@ -98,7 +98,10 @@ instance fillInConsMaybe ::
       case Rec.get key part of
         Nothing -> fillInImplN subpart dfs
         Just val ->
-          Rec.insert key val recurse
+          let
+            recurse :: Record result'
+            recurse = fillInImplJ subpart $ Rec.delete key dfs
+          in Rec.insert key val recurse
       where
         key = SProxy :: SProxy sym
         subpart :: Record partial'
@@ -107,9 +110,6 @@ instance fillInConsMaybe ::
         fillInImplJ = fillInImpl (R.RLProxy :: R.RLProxy rest)
         fillInImplN :: Record partial' -> Record defaults -> Record result
         fillInImplN = fillInImpl (R.RLProxy :: R.RLProxy rest)
-        recurse :: Record result'
-        recurse = fillInImplJ subpart $ Rec.delete key dfs
--}
 
 type MaxOptions x y =
   ( target :: QuerySelector
@@ -176,11 +176,9 @@ sineNomine :: ReallyMaxOptions
 sineNomine =
   fillIn defaultOptions { title: "No Name" }
 
-{-
 maybeTitle :: Maybe String -> ReallyMaxOptions
 maybeTitle title =
   fillIn defaultOptions { title }
--}
 
 data AxisType = LinearAxis | LogAxis
 
