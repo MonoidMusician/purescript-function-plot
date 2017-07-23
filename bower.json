@@ -1,0 +1,29 @@
+{
+  "name": "purescript-function-plot",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output"
+  ],
+  "dependencies": {
+    "purescript-prelude": "^3.1.0",
+    "purescript-console": "^3.0.0",
+    "purescript-dom": "^4.7.0",
+    "purescript-variant": "^3.0.0",
+    "purescript-colors": "^3.0.0",
+    "purescript-numbers": "^5.0.0",
+    "purescript-orders": "^3.0.0",
+    "purescript-record": "^0.1.0"
+  },
+  "devDependencies": {
+    "purescript-psci-support": "^3.0.0"
+  },
+  "authors": [
+    "Nicholas Scheel <monoidmusician@gmail.com>"
+  ],
+  "description": "PureScript API for function-plot",
+  "main": "",
+  "license": "MIT",
+  "homepage": "https://github.com/MonoidMusician/purescript-function-plot"
+}
