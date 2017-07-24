@@ -2,9 +2,9 @@ module FunctionPlot.Types where
 
 import Prelude
 
-import FunctionPlot.Types.Internal (fillIn, unsafeFillIn)
 import Color (Color)
 import DOM.Node.ParentNode (QuerySelector(..))
+import Data.Bifunctor (class Bifunctor)
 import Data.Function.Uncurried (Fn2, Fn3, Fn1, mkFn3)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (class Monoid, mempty)
@@ -14,6 +14,7 @@ import Data.Number.Format (fixed, toStringWith)
 import Data.Ord.Max (Max)
 import Data.Ord.Min (Min)
 import Data.Variant (Variant, inj, SProxy(..))
+import FunctionPlot.Types.Internal (fillIn, unsafeFillIn)
 import Unsafe.Coerce (unsafeCoerce)
 
 -- | The type of a `functionPlot` object.
@@ -157,7 +158,8 @@ maybeColored :: Maybe Color -> Record (MaxDataOptions ())
 maybeColored color = fillIn defaultDataOptions { color }
 
 -- | Variant of data over each graph type.
-type DatumV = Variant
+type DatumV = Variant DatumVR
+type DatumVR =
   ( linear :: { fn :: FunctionValue "x" }
   , parametric ::
     { x :: FunctionValue "t"
@@ -281,6 +283,11 @@ data SplitUpdatePolicy with without
   = At with
   | StartAt with
   | Updating without
+
+instance bifunctorSUP :: Bifunctor SplitUpdatePolicy where
+  bimap f _ (At w) = At (f w)
+  bimap f _ (StartAt w) = StartAt (f w)
+  bimap _ f (Updating wo) = Updating (f wo)
 
 type Derivative = SplitUpdatePolicy
   { x0 :: Number, fn :: FunctionValue "x" }
