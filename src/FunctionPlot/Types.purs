@@ -4,23 +4,22 @@ import Prelude
 
 import Color (Color)
 import DOM.Node.ParentNode (QuerySelector(..))
-import Data.Function.Uncurried (Fn2, Fn3, mkFn3)
+import Data.Function.Uncurried (Fn2, Fn3, Fn1, mkFn3)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (class Monoid, mempty)
 import Data.Monoid.Disj (Disj)
 import Data.Newtype (class Newtype, over)
+import Data.Number.Format (fixed, toStringWith)
 import Data.Ord.Max (Max)
 import Data.Ord.Min (Min)
 import Data.Record as Rec
-import Data.Variant (Variant)
+import Data.Variant (Variant, inj)
 import Type.Prelude (class IsSymbol, SProxy(..))
 import Type.Row as R
 import Unsafe.Coerce (unsafeCoerce)
 
+-- | The type of a `functionPlot` object.
 foreign import data Plot :: Type
-
-unsafeFillIn :: forall p f. FillIn p f => p -> f
-unsafeFillIn = fillIn (unsafeCoerce {})
 
 -- | A typeclass that allows defaulting of options, where options that are not
 -- | specified in `partial` are filled in with defaults. For each value that
@@ -33,6 +32,10 @@ class FillIn
   where
     fillIn :: filledIn -> partial -> filledIn
 
+-- | An unsafe version of fillIn that leaves the missing fields blank.
+unsafeFillIn :: forall p f. FillIn p f => p -> f
+unsafeFillIn = fillIn (unsafeCoerce {})
+
 instance fillInInstance ::
     -- partial :: Row <-> parts :: RowList
   ( R.RowToList partial parts
@@ -42,6 +45,7 @@ instance fillInInstance ::
   , R.ListToRow defaultL filledIn
     -- ensure we can instance match against the first row of parts
   , ShuffleNextToTop parts defaultL dL
+    -- dispatch to the RowList implementation of this
   , FillInImpl parts partial dL filledIn filledIn
   ) => FillIn (Record partial) (Record filledIn)
   where
@@ -66,8 +70,13 @@ instance shuffleNext ::
   , RowCons sym t2 or ir
     -- convert to rowlist o
   , R.RowToList or o
+  ) => ShuffleNextToTop
+    -- get the top
+    (R.Cons sym t1 rest)
+    -- get the remaining rows
+    i
     -- and add back on top
-  ) => ShuffleNextToTop (R.Cons sym t1 rest) i (R.Cons sym t2 o)
+    (R.Cons sym t2 o)
 
 -- | Expands iteration over `RowLists` to build the result options.
 class FillInImpl
@@ -175,6 +184,7 @@ type MaxOptions x y =
   , tip ::
       { xLine :: Disj Boolean
       , yLine :: Disj Boolean
+        -- for the default renderer, use defaultOptions.tip.renderer or showPoint
       , renderer :: Fn3 Number Number Int String
       }
   , annotations :: Array
@@ -215,12 +225,10 @@ defaultOptions =
     , yLine: mempty
     -- default tooltip renderer:
     -- https://github.com/mauriciopoppe/function-plot/blob/master/lib/tip.js#L16-L18
-    , renderer: mkFn3 \x y i -> mempty
-      --let showCoord =
-      --in mkFn3 \x y i ->
+    , renderer: mkFn3 \x y i -> (show :: Point -> String) (Point x y)
     }
   , annotations: mempty
-  , data: []
+  , data: mempty
   }
 -- | Default values for a (linear) axis.
 defaultAxisOptions :: Record MaxAxisOptions
@@ -241,6 +249,12 @@ maybeTitle title =
 
 -- | Value for `options.{x,y}Axis.type`: "linear" (default) or "log"
 data AxisType = LinearAxis | LogAxis
+derive instance eqAxisType :: Eq AxisType
+derive instance ordAxisType :: Ord AxisType
+
+instance showAxisType :: Show AxisType where
+  show LinearAxis = "linear"
+  show LogAxis = "log"
 
 -- | Boolean Monoid with XOR, since `invert <<< invert == id`.
 newtype XDisj = XDisj Boolean
@@ -279,17 +293,29 @@ type MaxDataOptions attr =
   ( title :: String
   , skipTip :: Disj Boolean
   , range :: Interval
-  , nSamples :: Int -- listed as a "number" in JS docs, but should be an int
+  , nSamples :: Maybe Int -- listed as a "number" in JS docs, but should be an int
   , graphType :: GraphType -- includes sampler
-  , color :: Color
+  , color :: Maybe Color
   , attr :: Record attr
-  , derivative ::
-      WithUpdatePolicy "x0"
-      ( fn :: FunctionValue "x" )
-  , secants :: Array
-      (WithUpdatePolicy "x1"
-      ( x0 :: Number ))
+  , derivative :: Maybe Derivative
+  , secants :: Array Secant
   )
+
+defaultDataOptions :: Record (MaxDataOptions ())
+defaultDataOptions =
+  { title: mempty
+  , skipTip: mempty
+  , range: mempty
+  , nSamples: Nothing
+  , graphType: IntervalGraph
+  , color: Nothing
+  , attr: {}
+  , derivative: Nothing
+  , secants: []
+  }
+
+maybeColored :: Maybe Color -> Record (MaxDataOptions ())
+maybeColored color = fillIn defaultDataOptions { color }
 
 -- | Variant of data over each graph type.
 type DatumV = Variant
@@ -304,10 +330,34 @@ type DatumV = Variant
   , vector :: { vector :: Point, offset :: Maybe Point }
   )
 
+linear :: FunctionValue "x" -> DatumV
+linear = inj (SProxy :: SProxy "linear") <<< { fn: _ }
+
+parametric ::
+  { x :: FunctionValue "t"
+  , y :: FunctionValue "t"
+  } -> DatumV
+parametric = inj (SProxy :: SProxy "parametric")
+
+polar :: FunctionValue "theta" -> DatumV
+polar = inj (SProxy :: SProxy "polar") <<< { r: _ }
+
+implicit :: FunctionValue2 "x" "y" -> DatumV
+implicit = inj (SProxy :: SProxy "implicit") <<< { fn: _ }
+
+points :: Points -> DatumV
+points = inj (SProxy :: SProxy "points") <<< { points: _ }
+
+vectorFromOrigin :: Point -> DatumV
+vectorFromOrigin = inj (SProxy :: SProxy "vector") <<< { vector: _, offset: Nothing }
+
+vector :: { vector :: Point, offset :: Point } -> DatumV
+vector { vector, offset } = inj (SProxy :: SProxy "vector") { vector, offset: Just offset }
+
 -- | A function that can be plotted on a graph. Arguments in phantom `Symbol`.
 data FunctionValue (s :: Symbol)
   = StrFn String
-  | FnVFn (Number -> Number)
+  | FnVFn (Fn1 Number Number)
 
 data FunctionValue2 (a :: Symbol) (b :: Symbol)
   = StrFn2 String
@@ -318,6 +368,27 @@ type Points = Array Point
 -- | A `Point` on the graph, (x, y)
 data Point = Point Number Number
 
+instance semigroupPoint :: Semigroup Point where
+  append (Point x1 y1) (Point x2 y2) =
+    Point (x1+y1) (x2+y2)
+instance monoidPoint :: Monoid Point where
+  mempty = Point 0.0 0.0
+instance semiringPoint :: Semiring Point where
+  zero = Point 0.0 0.0
+  one = Point 1.0 1.0
+  add (Point x1 y1) (Point x2 y2) =
+    Point (x1+y1) (x2+y2)
+  mul (Point x1 y1) (Point x2 y2) =
+    Point (x1*y1) (x2*y2)
+instance ringPoint :: Ring Point where
+  sub (Point x1 y1) (Point x2 y2) =
+    Point (x1-y1) (x2-y2)
+
+instance showPoint :: Show Point where
+  show (Point x y) =
+    let showCoord = fixed 3 # toStringWith
+    in "(" <> showCoord x <> "," <> showCoord y <> ")"
+
 -- | Type of the graph, "interval", "polyline", or "scatter", including a
 -- | `Sampler` and `Closed` options for the latter two types (i.e. not
 -- | "interval" -- this ADT ensures this is hard to mess up).
@@ -325,13 +396,27 @@ data GraphType
   = IntervalGraph
   | PolylineGraph Sampler Closed
   | ScatterGraph Sampler Closed
--- | Use interval arithmetic or normal.
+derive instance eqGraphType :: Eq GraphType
+derive instance ordGraphType :: Ord GraphType
+
+-- | Use interval arithmetic ("interval") or normal ("builtIn").
 data Sampler = IntervalSampler | BuiltInSampler
+derive instance eqSampler :: Eq Sampler
+derive instance ordSampler :: Ord Sampler
+
+instance showSampler :: Show Sampler where
+  show IntervalSampler = "interval"
+  show BuiltInSampler = "builtIn"
+
 -- | Closed means draw the line from the x-axis to the point on the curve.
 data Closed = Closed | Open
+derive instance eqClosed :: Eq Closed
+derive instance ordClosed :: Ord Closed
 
 -- | An interval. `Monoid` chooses to expand the interval.
 data Interval = Interval (Min Number) (Max Number) | Default
+derive instance eqInterval :: Eq Interval
+derive instance ordInterval :: Ord Interval
 
 instance semigroupInterval :: Semigroup Interval where
   append Default r = r
@@ -357,3 +442,11 @@ data SplitUpdatePolicy with without
   = At with
   | StartAt with
   | Updating without
+
+type Derivative = SplitUpdatePolicy
+  { x0 :: Number, fn :: FunctionValue "x" }
+  { fn :: FunctionValue "x" }
+
+type Secant = SplitUpdatePolicy
+  { x0 :: Number, x1 :: Number }
+  { x0 :: Number }
