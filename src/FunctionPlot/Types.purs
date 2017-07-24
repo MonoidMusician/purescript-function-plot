@@ -27,11 +27,11 @@ type MaxOptions x y =
   , title :: String
   , xAxis :: x
   , yAxis :: y
-  , disableZoom :: Disj Boolean
-  , grid :: Disj Boolean
+  , disableZoom :: Enable
+  , grid :: Enable
   , tip ::
-      { xLine :: Disj Boolean
-      , yLine :: Disj Boolean
+      { xLine :: Enable
+      , yLine :: Enable
         -- for the default renderer, use defaultOptions.tip.renderer or showPoint
       , renderer :: Fn3 Number Number Int String
       }
@@ -104,6 +104,9 @@ instance showAxisType :: Show AxisType where
   show LinearAxis = "linear"
   show LogAxis = "log"
 
+-- | Option, default false, any true will enable it.
+type Enable = Disj Boolean
+
 -- | Boolean Monoid with XOR, since `invert <<< invert == id`.
 newtype XDisj = XDisj Boolean
 derive instance newtypeXDisj :: Newtype XDisj _
@@ -121,25 +124,13 @@ type Data = Array Datum
 -- | Existential foreign type for a `Datum`.
 foreign import data Datum :: Type
 
--- | `DatumU` appropriately quantified and constrained.
-type DatumQuantified =
-  forall datum datum' attr.
-    Union datum datum' (MaxDataOptions attr) =>
-  DatumU datum
-
--- | Convert a PureScript-built `Datum` to the `Foreign` value.
--- |
--- | TODO: `Foreign` encode?
-mkDatum :: DatumQuantified -> Datum
-mkDatum = unsafeCoerce
-
 -- | Product of general datum options and the variant over the type of graph.
 data DatumU datum = Datum (Record datum) DatumV
 
 -- | All the options shared by all graph types
 type MaxDataOptions attr =
   ( title :: String
-  , skipTip :: Disj Boolean
+  , skipTip :: Enable
   , range :: Interval
   , nSamples :: Maybe Int -- listed as a "number" in JS docs, but should be an int
   , graphType :: GraphType -- includes sampler

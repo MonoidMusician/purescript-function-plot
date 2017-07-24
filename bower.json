@@ -14,7 +14,8 @@
     "purescript-colors": "^3.0.0",
     "purescript-numbers": "^5.0.0",
     "purescript-orders": "^3.0.0",
-    "purescript-record": "^0.1.0"
+    "purescript-record": "^0.1.0",
+    "purescript-foreign-generic": "^4.2.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0"
